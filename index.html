@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sine Clock</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+      -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none;
+    }
+    #app { position: fixed; inset: 0; }
+    canvas { -webkit-touch-callout: none; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js" defer></script>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // --- Responsive layout vars ---
+    let padding, graphX, graphY, graphWidth, graphAmplitude;
+    let lineExtension = -5; // your pref
+    let ampmLabel = 'AM';
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      frameRate(30);
+      angleMode(DEGREES);
+      textAlign(CENTER, CENTER);
+      textSize(18);
+      computeLayout();
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      computeLayout();
+    }
+
+    function computeLayout() {
+      padding = constrain(Math.round(width * 0.06), 16, 48);
+      graphX = padding;
+      graphWidth = width - padding * 2;
+      graphAmplitude = constrain(Math.round(min(width, height) * 0.09), 40, 120);
+      graphY = Math.round(height / 2);
+    }
+
+    function draw() {
+      background(0);
+
+      // Real-time angles (smooth)
+      const now = new Date();
+      const hr24 = now.getHours();
+      const h = hr24 % 12;
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+      const ms = now.getMilliseconds();
+      ampmLabel = (hr24 < 12) ? 'AM' : 'PM';
+
+      const fsec = s + ms / 1000;
+      const fmin = m + fsec / 60;
+      const fhour = h + fmin / 60;
+
+      const minuteAngle = fmin * 6;   // 6° per minute
+      const hourAngle   = fhour * 30; // 30° per hour
+      const secAngle    = fsec * 6;   // 6° per second
+
+      // Waves & grid
+      drawMinuteWave(minuteAngle);
+      drawHourWave(hourAngle);
+      drawSecondsWave(secAngle);
+      drawHourGrid(ampmLabel);
+    }
+
+    // ===== Waves =====
+    function drawMinuteWave(angleDeg) {
+      stroke('orange'); strokeWeight(3); noFill();
+      beginShape();
+      for (let ang = 0; ang <= 360; ang++) {
+        const x = angleToX(ang);
+        const y = graphY - graphAmplitude * cos(ang - 90);
+        vertex(x, y);
+      }
+      endShape();
+
+      const dotX = angleToX(mod360(angleDeg));
+      const dotY = graphY - graphAmplitude * cos(angleDeg - 90);
+      noStroke(); fill('orange'); circle(dotX, dotY, 10);
+    }
+
+    function drawHourWave(angleDeg) {
+      stroke('red'); strokeWeight(3); noFill();
+      beginShape();
+      for (let ang = 0; ang <= 360; ang++) {
+        const x = angleToX(ang);
+        const y = graphY - graphAmplitude * sin(ang - 90);
+        vertex(x, y);
+      }
+      endShape();
+
+      const dotX = angleToX(mod360(angleDeg));
+      const dotY = graphY - graphAmplitude * sin(angleDeg - 90);
+      noStroke(); fill('red'); circle(dotX, dotY, 10);
+    }
+
+    // Seconds wave with your -240° phase shift
+    function drawSecondsWave(angleDeg) {
+      stroke(0, 200, 255); strokeWeight(2.5); noFill();
+      beginShape();
+      for (let ang = 0; ang <= 360; ang++) {
+        const x = angleToX(ang);
+        const y = graphY - graphAmplitude * sin(ang - 240);
+        vertex(x, y);
+      }
+      endShape();
+
+      const dotX = angleToX(mod360(angleDeg));
+      const dotY = graphY - graphAmplitude * sin(angleDeg - 240);
+      noStroke(); fill(0, 200, 255); circle(dotX, dotY, 10);
+    }
+
+    // ===== Grid + Labels =====
+    function drawHourGrid(ampm) {
+      const bottomY = graphY + graphAmplitude - lineExtension;
+      const D = bottomY - (graphY + graphAmplitude);
+      const topY = (graphY - graphAmplitude) - D;
+
+      const baseLabelY = bottomY + scaled(14);
+      const xLeft12 = angleToX(0);
+      const xEnd = angleToX(360);
+
+      // Minute subdivisions
+      for (let i = 0; i < 12; i++) {
+        const ang = i * 30;
+        const x = angleToX(ang);
+        const nextX = (i === 11) ? xEnd : angleToX(ang + 30);
+
+        stroke(200, 200, 200, 120);
+        strokeWeight(1.5);
+        for (let j = 1; j <= 4; j++) {
+          const interX = lerp(x, nextX, j / 5);
+          line(interX, topY, interX, bottomY);
+        }
+      }
+
+      // Hour lines + quarter labels
+      for (let i = 0; i < 12; i++) {
+        const ang = i * 30;
+        const x = angleToX(ang);
+
+        stroke(255);
+        strokeWeight(i % 3 === 0 ? 3.75 : 2.0);
+        line(x, topY, x, bottomY);
+
+        if (i % 3 === 0) {
+          noStroke(); fill(255);
+          const label = (i === 0) ? '12' : String(i);
+          text(label, x, baseLabelY);
+        }
+      }
+
+      // Duplicate right-edge 12
+      stroke(255); strokeWeight(3.75);
+      line(xEnd, topY, xEnd, bottomY);
+      noStroke(); fill(255); text('12', xEnd, baseLabelY);
+
+      // Title & Legend row
+      const gap = baseLabelY - bottomY;
+      const leftEdge12 = xLeft12 - textWidth('12') / 2;
+      const titleY = topY - gap;
+      const legendY = baseLabelY + gap;
+
+      // Left: SINE CLOCK (left-aligned to left edge of first 12)
+      textAlign(LEFT, CENTER);
+      fill(255);
+      text('SINE CLOCK', leftEdge12, titleY);
+
+      // Right: JJQAD (right-aligned to right-hand 12 line)
+      textAlign(RIGHT, CENTER);
+      text('JJQAD', xEnd, titleY);
+
+      // Legend "H M S" starting at the left edge of first 12
+      textAlign(LEFT, CENTER);
+      fill('red');          text('H', leftEdge12, legendY);
+      const wHspace  = textWidth('H ');
+      fill('orange');       text('M', leftEdge12 + wHspace, legendY);
+      const wHMspace = textWidth('H M ');
+      fill(0, 200, 255);    text('S', leftEdge12 + wHMspace, legendY);
+
+      // AM/PM tag: right edge aligned to the right edge of the "12" label
+      textAlign(RIGHT, CENTER);
+      fill(255);
+      const rightEdge12 = xEnd + textWidth('12') / 2; // right edge of centered "12"
+      text(ampm, rightEdge12, legendY);
+
+      // Restore default
+      textAlign(CENTER, CENTER);
+    }
+
+    // ===== Helpers =====
+    function angleToX(deg) {
+      return map(deg, 0, 360, graphX, graphX + graphWidth);
+    }
+    function mod360(deg) {
+      return ((deg % 360) + 360) % 360;
+    }
+    function scaled(px) {
+      return px * constrain(width / 390, 0.9, 1.4); // 390 ~ iPhone 12 width
+    }
+  </script>
+</body>
+</html>
