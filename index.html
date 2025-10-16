@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Sine Clock</title>
+  <title>Sine Clock by JJQAD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <!-- iOS full-screen -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -61,11 +61,13 @@
     })();
 
     function setAppIconsFromDataURL(dataURL) {
+      // iOS home-screen icon
       const apple = document.createElement("link");
       apple.rel = "apple-touch-icon";
       apple.href = dataURL;
       document.head.appendChild(apple);
 
+      // Update manifest icons dynamically
       const existing = document.querySelector('link[rel="manifest"]');
       if (existing) {
         fetch(existing.href).then(r => r.json()).then(m => {
@@ -122,7 +124,7 @@
       // --- Solve amplitude from a GLOBAL TOTAL HEIGHT CAP that includes title, numbers, legend ---
       const gapTitle  = UI(GAPS.title);
       const gapLabel  = UI(GAPS.label);
-      const gapLegend = UI(GAPS.legend);
+      const gapLegend = gapLabel;                // legend gap equals label gap (your requirement)
       const textH     = Math.round(TEXT_SIZE * 1.2); // line height approx
       const LEa       = Math.abs(lineExtension);
 
@@ -131,12 +133,11 @@
       // total = (2*A - 2*LEa) + gapTitle + gapLabel + gapLegend + 2*textH
       const otherHeights = gapTitle + gapLabel + gapLegend + 2 * textH;
 
-      // Universal cap: 1/4 of viewport width (works on mobile & desktop) AND must fit viewport height
+      // Universal cap: 1/4 of viewport width (applies on mobile & desktop) AND must fit viewport height
       const maxByWidth    = Math.floor(width  * 0.25);
       const maxByViewport = Math.floor(height - UI(8)); // tiny safety margin
 
-      // Choose the smaller cap so we never overflow vertically
-      const maxTotal = Math.max(140, Math.min(maxByWidth, maxByViewport)); // keep a reasonable minimum
+      const maxTotal = Math.max(140, Math.min(maxByWidth, maxByViewport));
 
       // Solve for A: 2*A - 2*LEa + otherHeights <= maxTotal  ->  A <= (maxTotal - otherHeights + 2*LEa)/2
       let targetA = Math.floor((maxTotal - otherHeights + 2 * LEa) / 2);
@@ -228,9 +229,9 @@
       // Fixed pixel gaps (scaled by width only)
       const gapTitle  = UI(GAPS.title);
       const gapLabel  = UI(GAPS.label);
-      const gapLegend = UI(GAPS.legend);
+      const gapLegend = gapLabel;                               // legend gap equals label gap
 
-      const baseLabelY = bottomY + gapLabel;
+      const baseLabelY = bottomY + gapLabel;                    // 12/3/6/9 baseline
       const xLeft12 = angleToX(0);
       const xEnd    = angleToX(360);
 
@@ -266,10 +267,10 @@
       line(xEnd, topY, xEnd, bottomY);
       noStroke(); fill(255); text('12', xEnd, baseLabelY);
 
-      // Title / credit / legend / AM-PM with fixed vertical spacing (prevents squeezing)
+      // Title / credit / legend / AM-PM with corrected spacing
       const leftEdge12 = xLeft12 - textWidth('12') / 2;
       const titleY  = topY       - gapTitle;
-      const legendY = baseLabelY + gapLegend;
+      const legendY = baseLabelY + gapLegend;                  // equal spacing below the 12s
 
       // Title (left) and credit (right)
       textAlign(LEFT, CENTER);
@@ -340,7 +341,7 @@
     function registerSW() {
       if (!('serviceWorker' in navigator)) return;
       const swCode = `
-        const CACHE = 'sine-clock-v3';
+        const CACHE = 'sine-clock-v4';
         const ASSETS = [
           self.location.href,
           'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js'
