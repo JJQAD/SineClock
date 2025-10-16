@@ -40,7 +40,7 @@
   <div id="app"></div>
   <div id="hint">Sine Clock works best in landscape orientation.</div>
 
-  <!-- Manifest injected dynamically so we can stay single-file -->
+  <!-- Manifest injected dynamically (single-file deploy) -->
   <script>
     (function attachManifest() {
       const manifest = {
@@ -61,13 +61,11 @@
     })();
 
     function setAppIconsFromDataURL(dataURL) {
-      // iOS home-screen icon
       const apple = document.createElement("link");
       apple.rel = "apple-touch-icon";
       apple.href = dataURL;
       document.head.appendChild(apple);
 
-      // Update manifest icons dynamically
       const existing = document.querySelector('link[rel="manifest"]');
       if (existing) {
         fetch(existing.href).then(r => r.json()).then(m => {
@@ -82,13 +80,14 @@
   <script>
     // ---------------- p5 sketch ----------------
     let paddingX, graphX, graphY, graphWidth, graphAmplitude;
-    const lineExtension = -4;   // slight bottom overshoot
+    const lineExtension = -4;        // slight bottom overshoot
+    const DOT_SIZE = 15;             // requested dot size
     let ampmLabel = 'AM';
 
     // Fixed UI gaps in px, scaled only by screen width (NOT graph height)
     function uiScale() { return Math.min(Math.max(window.innerWidth / 390, 0.9), 1.3); } // 390 ~ iPhone 12 width
     function UI(px) { return Math.round(px * uiScale()); }
-    const GAPS = { title: 12, label: 12, legend: 10 };
+    const GAPS = { title: 12, label: 12, legend: 10 }; // title above grid, numbers below grid, legend below numbers
     const TEXT_SIZE = 18;
 
     function setup() {
@@ -120,44 +119,32 @@
       graphX     = paddingX;
       graphWidth = width - paddingX * 2;
 
-      // --- Determine amplitude so the ENTIRE block fits vertically ---
-      // Fixed pixel gaps (scaled by width only)
+      // --- Solve amplitude from a GLOBAL TOTAL HEIGHT CAP that includes title, numbers, legend ---
       const gapTitle  = UI(GAPS.title);
       const gapLabel  = UI(GAPS.label);
       const gapLegend = UI(GAPS.legend);
-      const textH     = Math.round(TEXT_SIZE * 1.2); // reasonable line height approx
+      const textH     = Math.round(TEXT_SIZE * 1.2); // line height approx
+      const LEa       = Math.abs(lineExtension);
 
-      // Grid height (topY..bottomY) = 2*A - 2*|lineExtension|
-      const LEa = Math.abs(lineExtension);
+      // Total block height:
+      // grid height = 2*A - 2*LEa
+      // total = (2*A - 2*LEa) + gapTitle + gapLabel + gapLegend + 2*textH
+      const otherHeights = gapTitle + gapLabel + gapLegend + 2 * textH;
 
-      // Total block height from title line (above topY) to legend line (below numbers):
-      // total = (2*A - 2*LEa) + gapTitle + gapLabel + gapLegend + textH*2
-      const otherHeights = gapTitle + gapLabel + gapLegend + textH * 2;
+      // Universal cap: 1/4 of viewport width (works on mobile & desktop) AND must fit viewport height
+      const maxByWidth    = Math.floor(width  * 0.25);
+      const maxByViewport = Math.floor(height - UI(8)); // tiny safety margin
 
-      // Portrait: cap TOTAL block height to ~¼ of viewport width
-      let maxTotalPortrait = Math.floor(width * 0.25);
-      // Fallback min to avoid collapsing on very narrow screens
-      maxTotalPortrait = Math.max(maxTotalPortrait, 140);
+      // Choose the smaller cap so we never overflow vertically
+      const maxTotal = Math.max(140, Math.min(maxByWidth, maxByViewport)); // keep a reasonable minimum
 
-      // Start with a generous landscape amplitude (~40% of height)
-      let targetA = Math.floor(height * 0.40);
-
-      if (isPortrait()) {
-        // Solve for A so total <= maxTotalPortrait:
-        // 2*A - 2*LEa + otherHeights <= maxTotalPortrait
-        // => A <= (maxTotalPortrait - otherHeights + 2*LEa)/2
-        targetA = Math.floor((maxTotalPortrait - otherHeights + 2 * LEa) / 2);
-      }
-
-      // Also ensure it fits inside the actual viewport height (landscape small heights, etc.)
-      const maxTotalByViewport = height - UI(8); // tiny safety margin
-      const aByViewport = Math.floor((maxTotalByViewport - otherHeights + 2 * LEa) / 2);
-      targetA = Math.min(targetA, aByViewport);
+      // Solve for A: 2*A - 2*LEa + otherHeights <= maxTotal  ->  A <= (maxTotal - otherHeights + 2*LEa)/2
+      let targetA = Math.floor((maxTotal - otherHeights + 2 * LEa) / 2);
 
       // Clamp amplitude to sane bounds
       graphAmplitude = Math.floor(Math.min(Math.max(targetA, 48), height * 0.46));
 
-      // Vertically center the whole block
+      // Vertically center the entire block
       graphY = Math.round(height / 2);
     }
 
@@ -200,7 +187,7 @@
       endShape();
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * cos(angleDeg - 90);
-      noStroke(); fill('orange'); circle(dotX, dotY, 10);
+      noStroke(); fill('orange'); circle(dotX, dotY, DOT_SIZE);
     }
 
     function drawHourWave(angleDeg) {
@@ -214,7 +201,7 @@
       endShape();
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * sin(angleDeg - 90);
-      noStroke(); fill('red'); circle(dotX, dotY, 10);
+      noStroke(); fill('red'); circle(dotX, dotY, DOT_SIZE);
     }
 
     // Seconds wave with -240° phase
@@ -229,14 +216,14 @@
       endShape();
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * sin(angleDeg - 240);
-      noStroke(); fill(0, 200, 255); circle(dotX, dotY, 10);
+      noStroke(); fill(0, 200, 255); circle(dotX, dotY, DOT_SIZE);
     }
 
     // -------------- Grid + Labels --------------
     function drawHourGrid(ampm) {
-      const bottomY = graphY + graphAmplitude - lineExtension; // fixed bottom
+      const bottomY = graphY + graphAmplitude - lineExtension; // fixed bottom reference
       const D       = Math.abs(lineExtension);
-      const topY    = (graphY - graphAmplitude) - D;           // mirror above
+      const topY    = (graphY - graphAmplitude) - D;           // mirrored above
 
       // Fixed pixel gaps (scaled by width only)
       const gapTitle  = UI(GAPS.title);
@@ -279,7 +266,7 @@
       line(xEnd, topY, xEnd, bottomY);
       noStroke(); fill(255); text('12', xEnd, baseLabelY);
 
-      // Title / credit / legend / AM-PM with fixed vertical spacing
+      // Title / credit / legend / AM-PM with fixed vertical spacing (prevents squeezing)
       const leftEdge12 = xLeft12 - textWidth('12') / 2;
       const titleY  = topY       - gapTitle;
       const legendY = baseLabelY + gapLegend;
@@ -299,7 +286,7 @@
       const wHMspace = textWidth('H M ');
       fill(0, 200, 255);    text('S', leftEdge12 + wHMspace, legendY);
 
-      // AM/PM aligned so the end matches the right edge of the right '12'
+      // AM/PM: align end of label with right edge of the right '12'
       textAlign(RIGHT, CENTER);
       fill(255);
       const rightEdge12 = xEnd + textWidth('12') / 2;
@@ -341,9 +328,9 @@
       }
 
       // Match app phasing: orange ~ sin(ang+0), red ~ sin(ang-90), cyan ~ sin(ang-240)
-      drawPhase('#ffa500',   0);   // orange (minute)
-      drawPhase('#ff3b30',  90);   // red (hour)
-      drawPhase('#00c8ff', 240);   // cyan (seconds)
+      drawPhase('#ffa500',   0);   // orange
+      drawPhase('#ff3b30',  90);   // red
+      drawPhase('#00c8ff', 240);   // cyan
 
       const dataURL = c.toDataURL('image/png');
       setAppIconsFromDataURL(dataURL);
@@ -353,7 +340,7 @@
     function registerSW() {
       if (!('serviceWorker' in navigator)) return;
       const swCode = `
-        const CACHE = 'sine-clock-v2';
+        const CACHE = 'sine-clock-v3';
         const ASSETS = [
           self.location.href,
           'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js'
