@@ -4,11 +4,10 @@
   <meta charset="utf-8" />
   <title>Sine Clock</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <!-- iOS full-screen -->
+  <!-- iOS full-screen & preferred orientation (not forced) -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Sine Clock" />
-  <!-- Prefer landscape when installed; portrait still supported -->
   <meta name="apple-mobile-web-app-orientation" content="landscape" />
   <style>
     html, body {
@@ -22,17 +21,18 @@
     }
     #app { position: fixed; inset: 0; }
     canvas { display:block; width:100vw; height:100vh; -webkit-touch-callout: none; }
-    /* Hint line below the graph */
+    /* Portrait-only hint under the graph */
     #hint {
       position: fixed;
       left: 0; right: 0;
-      bottom: env(safe-area-inset-bottom, 12px);
+      bottom: env(safe-area-inset-bottom, 8px);
       text-align: center;
       color: #bbb;
       font-size: 12px;
       line-height: 1.2;
       pointer-events: none;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
+      display: none; /* toggled by JS */
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js" defer></script>
@@ -41,7 +41,7 @@
   <div id="app"></div>
   <div id="hint">Sine Clock works best in landscape orientation.</div>
 
-  <!-- Manifest is injected at runtime so this can remain one file -->
+  <!-- Manifest is injected at runtime so this can remain a single file -->
   <script>
     (function attachManifest() {
       const manifest = {
@@ -62,11 +62,13 @@
     })();
 
     function setAppIconsFromDataURL(dataURL) {
+      // iOS home-screen icon
       const apple = document.createElement("link");
       apple.rel = "apple-touch-icon";
       apple.href = dataURL;
       document.head.appendChild(apple);
 
+      // Update manifest icons dynamically
       const existing = document.querySelector('link[rel="manifest"]');
       if (existing) {
         fetch(existing.href).then(r => r.json()).then(m => {
@@ -81,8 +83,17 @@
   <script>
     // -------------- p5 sketch --------------
     let paddingX, graphX, graphY, graphWidth, graphAmplitude;
-    const lineExtension = -4;   // slight bottom overshoot
+    const lineExtension = -4;   // slight bottom overshoot for grid lines
     let ampmLabel = 'AM';
+
+    // Fixed UI gaps (in pixels, scaled lightly by width—not by graph height)
+    function uiScale() { return Math.min(Math.max(window.innerWidth / 390, 0.9), 1.3); } // 390 ≈ iPhone 12 width
+    function UI(px) { return Math.round(px * uiScale()); }
+    const GAPS = {
+      title: 12,   // distance above the grid to the title row
+      label: 12,   // distance from grid bottom to the 12/3/6/9 numbers
+      legend: 10   // distance from numbers to the legend row
+    };
 
     function setup() {
       createCanvas(windowWidth, windowHeight);
@@ -91,26 +102,46 @@
       textAlign(CENTER, CENTER);
       textSize(18);
       computeLayout();
-      // Build app icon shortly after load
+      updateHintVisibility();
+      // Build app icon a moment after load
       setTimeout(buildAndSetIcon, 300);
+      // Register service worker (PWA/offline)
+      registerSW();
     }
 
     function windowResized() {
       resizeCanvas(windowWidth, windowHeight);
       computeLayout();
+      updateHintVisibility();
+    }
+
+    function isPortrait() { return window.innerHeight > window.innerWidth; }
+    function updateHintVisibility() {
+      document.getElementById('hint').style.display = isPortrait() ? 'block' : 'none';
     }
 
     function computeLayout() {
-      // Side padding ~5–6% of width; vertical padding is minimized by maximizing amplitude
-      paddingX   = constrain(Math.round(width * 0.055), 10, 44);
+      // Side padding ~5–6% of width; vertical padding minimized by maximizing amplitude
+      paddingX   = Math.min(Math.max(Math.round(width * 0.055), 10), 44);
       graphX     = paddingX;
       graphWidth = width - paddingX * 2;
 
-      // Maximize graph height: make amplitude ~40% of viewport height (capped)
-      // This keeps small gaps for title/legend without clipping on all phones.
-      graphAmplitude = Math.floor(constrain(height * 0.40, 60, height * 0.46));
+      // --- Graph height limit ---
+      // Base amplitude target for generous height
+      let targetAmplitude = Math.floor(height * 0.40);
 
-      // Vertically center the graph block
+      // In PORTRAIT, cap overall graph height to ~½ of viewport width
+      // Total graph height ≈ 2*graphAmplitude + title/label/legend gaps (small)
+      if (isPortrait()) {
+        const maxTotal = Math.floor(width * 0.5);
+        const fixedGaps = UI(GAPS.title + GAPS.label + GAPS.legend) + 10; // safety margin
+        targetAmplitude = Math.floor(Math.max(40, (maxTotal - fixedGaps) / 2));
+      }
+
+      // Clamp amplitude to avoid clipping on extremes
+      graphAmplitude = Math.floor(Math.min(Math.max(targetAmplitude, 52), height * 0.46));
+
+      // Vertically center the graph block—spacing now uses fixed pixel gaps
       graphY = Math.round(height / 2);
     }
 
@@ -191,8 +222,8 @@
       const D       = bottomY - (graphY + graphAmplitude);
       const topY    = (graphY - graphAmplitude) - D;
 
-      // Tighter internal gaps for max height
-      const baseLabelY = bottomY + scaled(7);  // numbers just below bottom
+      // Use fixed pixel gaps (scaled by width only), so spacing stays consistent as graph height changes
+      const baseLabelY = bottomY + UI(GAPS.label);
       const xLeft12 = angleToX(0);
       const xEnd    = angleToX(360);
 
@@ -228,11 +259,12 @@
       line(xEnd, topY, xEnd, bottomY);
       noStroke(); fill(255); text('12', xEnd, baseLabelY);
 
-      // Title / credit / legend / AM-PM with minimal extra space
-      const gap       = Math.max(6, scaled(6));  // tiny but readable
+      // Title / credit / legend / AM-PM with fixed gaps
+      const gapTitle  = UI(GAPS.title);
+      const gapLegend = UI(GAPS.legend);
       const leftEdge12 = xLeft12 - textWidth('12') / 2;
-      const titleY    = topY - gap;
-      const legendY   = baseLabelY + gap;
+      const titleY  = topY       - gapTitle;
+      const legendY = baseLabelY + gapLegend;
 
       // Left: SINE CLOCK
       textAlign(LEFT, CENTER);
@@ -262,56 +294,80 @@
     // ---------- Helpers ----------
     function angleToX(deg) { return map(deg, 0, 360, graphX, graphX + graphWidth); }
     function mod360(deg)   { return ((deg % 360) + 360) % 360; }
-    function scaled(px)    { return px * constrain(width / 390, 0.9, 1.4); } // 390 ≈ iPhone 12 width
 
-    // ---------- Dynamic app icon with clearer wave separation ----------
+    // ---------- Dynamic app icon (single baseline, phase-only offsets, no title) ----------
     function buildAndSetIcon() {
       const size = 1024;
       const c = document.createElement('canvas');
       c.width = c.height = size;
       const ctx = c.getContext('2d');
 
-      // Background (black)
+      // Background
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, size, size);
 
-      // Draw sine wave helper
-      function wavePath(yMid, amp, phaseDeg) {
-        ctx.beginPath();
-        for (let i = 0; i <= size; i++) {
-          const t = i / size;           // 0..1
-          const ang = t * 360;          // degrees
-          const y = yMid - amp * Math.sin((ang - phaseDeg) * Math.PI/180);
-          if (i === 0) ctx.moveTo(i, y); else ctx.lineTo(i, y);
-        }
-      }
-
-      // Thicc strokes for readability
+      // Single baseline; three waves only differ by PHASE (no vertical offsets)
+      const yMid = size * 0.5;
+      const amp  = size * 0.18;
       ctx.lineWidth = Math.max(8, size * 0.016);
       ctx.lineCap = 'round';
 
-      // Baselines and phases (offset red & orange so they don't overlap)
-      const yMidOrange = size * 0.42;
-      const yMidRed    = size * 0.54;
-      const yMidCyan   = size * 0.48;
+      function drawPhase(color, phaseDeg) {
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        for (let i = 0; i <= size; i++) {
+          const t = i / size;
+          const ang = t * 360;
+          const y = yMid - amp * Math.sin((ang - phaseDeg) * Math.PI/180);
+          if (i === 0) ctx.moveTo(i, y); else ctx.lineTo(i, y);
+        }
+        ctx.stroke();
+      }
 
-      // Orange (minute): cos(ang-90) ~ sin(ang+0) → phase ~ 90
-      ctx.strokeStyle = '#ffa500'; wavePath(yMidOrange, size*0.18, 90); ctx.stroke();
-
-      // Red (hour): sin(ang-90) with a slight phase offset to separate (was 90 → use 60)
-      ctx.strokeStyle = '#ff3b30'; wavePath(yMidRed, size*0.16, 60); ctx.stroke();
-
-      // Cyan (seconds): sin(ang-240)
-      ctx.strokeStyle = '#00c8ff'; wavePath(yMidCyan, size*0.14, 240); ctx.stroke();
-
-      // Title text
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${Math.round(size*0.11)}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('Sine Clock', size/2, size*0.94);
+      // Phases mirroring the app: orange ~ sin(ang) (cos(ang-90)), red ~ sin(ang-90), cyan ~ sin(ang-240)
+      drawPhase('#ffa500',   0);   // orange minute
+      drawPhase('#ff3b30',  90);   // red hour
+      drawPhase('#00c8ff', 240);   // cyan seconds
 
       const dataURL = c.toDataURL('image/png');
       setAppIconsFromDataURL(dataURL);
+    }
+
+    // ---------- PWA service worker (offline cache) ----------
+    function registerSW() {
+      if (!('serviceWorker' in navigator)) return;
+      const swCode = `
+        const CACHE = 'sine-clock-v1';
+        const ASSETS = [
+          self.location.href,
+          'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js'
+        ];
+        self.addEventListener('install', e => {
+          e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+        });
+        self.addEventListener('activate', e => {
+          e.waitUntil(
+            caches.keys().then(keys => Promise.all(keys.map(k => k === CACHE ? null : caches.delete(k))))
+          );
+        });
+        self.addEventListener('fetch', e => {
+          const req = e.request;
+          e.respondWith(
+            caches.match(req).then(cached => cached ||
+              fetch(req).then(res => {
+                // cache GETs only
+                if (req.method === 'GET') {
+                  const copy = res.clone();
+                  caches.open(CACHE).then(c => c.put(req, copy));
+                }
+                return res;
+              }).catch(() => caches.match(self.location.href))
+            )
+          );
+        });
+      `;
+      const blob = new Blob([swCode], { type: 'text/javascript' });
+      const url  = URL.createObjectURL(blob);
+      navigator.serviceWorker.register(url).catch(() => {});
     }
   </script>
 </body>
