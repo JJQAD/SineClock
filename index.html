@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Sine Clock</title>
+  <title>Sine Clock by JJQAD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -92,7 +92,7 @@
 
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * cos(angleDeg - 90);
-      noStroke(); fill('orange'); circle(dotX, dotY, 10);
+      noStroke(); fill('orange'); circle(dotX, dotY, 20);
     }
 
     function drawHourWave(angleDeg) {
@@ -107,7 +107,7 @@
 
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * sin(angleDeg - 90);
-      noStroke(); fill('red'); circle(dotX, dotY, 10);
+      noStroke(); fill('red'); circle(dotX, dotY, 20);
     }
 
     // Seconds wave with your -240° phase shift
@@ -123,7 +123,7 @@
 
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * sin(angleDeg - 240);
-      noStroke(); fill(0, 200, 255); circle(dotX, dotY, 10);
+      noStroke(); fill(0, 200, 255); circle(dotX, dotY, 20);
     }
 
     // ===== Grid + Labels =====
