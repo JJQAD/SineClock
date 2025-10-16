@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Sine Clock" />
-  <!-- (iOS respects orientation after add-to-home) -->
+  <!-- Prefer landscape when installed; portrait still supported -->
   <meta name="apple-mobile-web-app-orientation" content="landscape" />
   <style>
     html, body {
@@ -22,37 +22,28 @@
     }
     #app { position: fixed; inset: 0; }
     canvas { display:block; width:100vw; height:100vh; -webkit-touch-callout: none; }
-    /* Rotate overlay for portrait */
-    #rotate {
+    /* Hint line below the graph */
+    #hint {
       position: fixed;
-      inset: 0;
-      background: #000;
-      color: #fff;
-      display: none;
-      align-items: center;
-      justify-content: center;
+      left: 0; right: 0;
+      bottom: env(safe-area-inset-bottom, 12px);
       text-align: center;
-      padding: 32px;
-      z-index: 5;
-    }
-    #rotate .box {
-      border: 1px solid #444;
-      padding: 20px 24px;
-      border-radius: 12px;
-      opacity: 0.9;
+      color: #bbb;
+      font-size: 12px;
+      line-height: 1.2;
+      pointer-events: none;
+      margin-bottom: 6px;
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js" defer></script>
 </head>
 <body>
   <div id="app"></div>
-  <div id="rotate"><div class="box">Please rotate your device<br/>to landscape to view the Sine Clock.</div></div>
+  <div id="hint">Sine Clock works best in landscape orientation.</div>
 
-  <!-- manifest + icon will be injected at runtime for a single-file deployment -->
+  <!-- Manifest is injected at runtime so this can remain one file -->
   <script>
-    // --- PWA manifest (created at runtime so this can be a single file) ---
     (function attachManifest() {
-      // We will set icons later after drawing them (we swap in a data URL).
       const manifest = {
         name: "Sine Clock",
         short_name: "Sine Clock",
@@ -60,10 +51,7 @@
         background_color: "#000000",
         theme_color: "#000000",
         orientation: "landscape",
-        icons: [
-          { src: "", sizes: "512x512", type: "image/png", purpose: "any" },
-          { src: "", sizes: "512x512", type: "image/png", purpose: "maskable" }
-        ]
+        icons: [{ src: "", sizes: "512x512", type: "image/png", purpose: "any maskable" }]
       };
       const blob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
       const url = URL.createObjectURL(blob);
@@ -73,29 +61,19 @@
       document.head.appendChild(link);
     })();
 
-    // --- Create an Apple touch icon + fill manifest icons once drawn ---
     function setAppIconsFromDataURL(dataURL) {
-      // apple-touch-icon
       const apple = document.createElement("link");
       apple.rel = "apple-touch-icon";
       apple.href = dataURL;
       document.head.appendChild(apple);
 
-      // Update manifest <link> with icon URLs (rebuild manifest with actual src)
       const existing = document.querySelector('link[rel="manifest"]');
       if (existing) {
-        fetch(existing.href)
-          .then(r => r.json())
-          .then(m => {
-            m.icons = [
-              { src: dataURL, sizes: "512x512", type: "image/png", purpose: "any" },
-              { src: dataURL, sizes: "512x512", type: "image/png", purpose: "maskable" }
-            ];
-            const blob = new Blob([JSON.stringify(m)], { type: "application/manifest+json" });
-            const url = URL.createObjectURL(blob);
-            existing.href = url;
-          })
-          .catch(() => {});
+        fetch(existing.href).then(r => r.json()).then(m => {
+          m.icons = [{ src: dataURL, sizes: "512x512", type: "image/png", purpose: "any maskable" }];
+          const blob = new Blob([JSON.stringify(m)], { type: "application/manifest+json" });
+          existing.href = URL.createObjectURL(blob);
+        }).catch(()=>{});
       }
     }
   </script>
@@ -103,20 +81,8 @@
   <script>
     // -------------- p5 sketch --------------
     let paddingX, graphX, graphY, graphWidth, graphAmplitude;
-    // Reduce top/bottom spacing to ~1/3: we control via (a) bigger amplitude, (b) smaller internal gaps.
-    const lineExtension = -5;
-
-    // AM/PM
+    const lineExtension = -4;   // slight bottom overshoot
     let ampmLabel = 'AM';
-
-    // Orientation gate
-    function isPortrait() { return window.innerHeight > window.innerWidth; }
-    function updateRotateOverlay() {
-      const overlay = document.getElementById('rotate');
-      overlay.style.display = isPortrait() ? 'flex' : 'none';
-    }
-    window.addEventListener('resize', updateRotateOverlay);
-    window.addEventListener('orientationchange', updateRotateOverlay);
 
     function setup() {
       createCanvas(windowWidth, windowHeight);
@@ -125,39 +91,34 @@
       textAlign(CENTER, CENTER);
       textSize(18);
       computeLayout();
-      updateRotateOverlay();
-      // Build app icon once (after a tick so fonts init)
+      // Build app icon shortly after load
       setTimeout(buildAndSetIcon, 300);
     }
 
     function windowResized() {
       resizeCanvas(windowWidth, windowHeight);
       computeLayout();
-      updateRotateOverlay();
     }
 
     function computeLayout() {
-      // Side padding ~6% (kept), top/bottom "visual" padding reduced by growing amplitude and tightening gaps
-      paddingX = constrain(Math.round(width * 0.06), 12, 48);
-      graphX = paddingX;
+      // Side padding ~5–6% of width; vertical padding is minimized by maximizing amplitude
+      paddingX   = constrain(Math.round(width * 0.055), 10, 44);
+      graphX     = paddingX;
       graphWidth = width - paddingX * 2;
 
-      // Taller graph: increase amplitude (~0.12 of min dimension vs ~0.09 before)
-      graphAmplitude = constrain(Math.round(Math.min(width, height) * 0.12), 52, 150);
+      // Maximize graph height: make amplitude ~40% of viewport height (capped)
+      // This keeps small gaps for title/legend without clipping on all phones.
+      graphAmplitude = Math.floor(constrain(height * 0.40, 60, height * 0.46));
 
-      // Center vertically (the tightened title/legend gaps keep top/bottom whitespace ~1/3 prior)
+      // Vertically center the graph block
       graphY = Math.round(height / 2);
     }
 
     function draw() {
       background(0);
-      if (isPortrait()) {
-        // Pause rendering content in portrait
-        return;
-      }
 
       // Real-time angles
-      const now = new Date();
+      const now  = new Date();
       const hr24 = now.getHours();
       const h = hr24 % 12;
       const m = now.getMinutes();
@@ -165,13 +126,13 @@
       const ms = now.getMilliseconds();
       ampmLabel = (hr24 < 12) ? 'AM' : 'PM';
 
-      const fsec = s + ms / 1000;
-      const fmin = m + fsec / 60;
+      const fsec  = s + ms / 1000;
+      const fmin  = m + fsec / 60;
       const fhour = h + fmin / 60;
 
-      const minuteAngle = fmin * 6;   // 6°/min
-      const hourAngle   = fhour * 30; // 30°/hour
-      const secAngle    = fsec * 6;   // 6°/sec
+      const minuteAngle = fmin  * 6;  // 6°/min
+      const hourAngle   = fhour * 30; // 30°/hr
+      const secAngle    = fsec  * 6;  // 6°/sec
 
       // Waves + grid
       drawMinuteWave(minuteAngle);
@@ -190,7 +151,6 @@
         vertex(x, y);
       }
       endShape();
-
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * cos(angleDeg - 90);
       noStroke(); fill('orange'); circle(dotX, dotY, 10);
@@ -205,7 +165,6 @@
         vertex(x, y);
       }
       endShape();
-
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * sin(angleDeg - 90);
       noStroke(); fill('red'); circle(dotX, dotY, 10);
@@ -221,7 +180,6 @@
         vertex(x, y);
       }
       endShape();
-
       const dotX = angleToX(mod360(angleDeg));
       const dotY = graphY - graphAmplitude * sin(angleDeg - 240);
       noStroke(); fill(0, 200, 255); circle(dotX, dotY, 10);
@@ -230,20 +188,19 @@
     // ---------- Grid + Labels ----------
     function drawHourGrid(ampm) {
       const bottomY = graphY + graphAmplitude - lineExtension;
-      const D = bottomY - (graphY + graphAmplitude);
-      const topY = (graphY - graphAmplitude) - D;
+      const D       = bottomY - (graphY + graphAmplitude);
+      const topY    = (graphY - graphAmplitude) - D;
 
-      // Tighter internal gap to reduce top/bottom padding: use smaller scaled constant
-      const baseLabelY = bottomY + scaled(9);   // was ~14 → ~9 for tighter layout
+      // Tighter internal gaps for max height
+      const baseLabelY = bottomY + scaled(7);  // numbers just below bottom
       const xLeft12 = angleToX(0);
-      const xEnd = angleToX(360);
+      const xEnd    = angleToX(360);
 
-      // Minute subdivisions
+      // Minute subdivisions (4 between each hour)
       for (let i = 0; i < 12; i++) {
-        const ang = i * 30;
-        const x = angleToX(ang);
+        const ang   = i * 30;
+        const x     = angleToX(ang);
         const nextX = (i === 11) ? xEnd : angleToX(ang + 30);
-
         stroke(200, 200, 200, 120);
         strokeWeight(1.5);
         for (let j = 1; j <= 4; j++) {
@@ -255,11 +212,10 @@
       // Hour lines + quarter labels
       for (let i = 0; i < 12; i++) {
         const ang = i * 30;
-        const x = angleToX(ang);
+        const x   = angleToX(ang);
         stroke(255);
         strokeWeight(i % 3 === 0 ? 3.75 : 2.0);
         line(x, topY, x, bottomY);
-
         if (i % 3 === 0) {
           noStroke(); fill(255);
           const label = (i === 0) ? '12' : String(i);
@@ -272,17 +228,17 @@
       line(xEnd, topY, xEnd, bottomY);
       noStroke(); fill(255); text('12', xEnd, baseLabelY);
 
-      // Title, credit, legend, AM/PM
-      const gap = baseLabelY - bottomY;
+      // Title / credit / legend / AM-PM with minimal extra space
+      const gap       = Math.max(6, scaled(6));  // tiny but readable
       const leftEdge12 = xLeft12 - textWidth('12') / 2;
-      const titleY = topY - gap;
-      const legendY = baseLabelY + gap;
+      const titleY    = topY - gap;
+      const legendY   = baseLabelY + gap;
 
-      // Left title
+      // Left: SINE CLOCK
       textAlign(LEFT, CENTER);
       fill(255); text('SINE CLOCK', leftEdge12, titleY);
 
-      // Right credit
+      // Right: JJQAD
       textAlign(RIGHT, CENTER);
       text('JJQAD', xEnd, titleY);
 
@@ -294,10 +250,10 @@
       const wHMspace = textWidth('H M ');
       fill(0, 200, 255);    text('S', leftEdge12 + wHMspace, legendY);
 
-      // AM/PM aligned so the end of "M" matches the end of the right "12"
+      // AM/PM: align end of label with right edge of right "12"
       textAlign(RIGHT, CENTER);
       fill(255);
-      const rightEdge12 = xEnd + textWidth('12') / 2; // right edge of "12"
+      const rightEdge12 = xEnd + textWidth('12') / 2;
       text(ampm, rightEdge12, legendY);
 
       textAlign(CENTER, CENTER);
@@ -306,9 +262,9 @@
     // ---------- Helpers ----------
     function angleToX(deg) { return map(deg, 0, 360, graphX, graphX + graphWidth); }
     function mod360(deg)   { return ((deg % 360) + 360) % 360; }
-    function scaled(px)    { return px * constrain(width / 390, 0.9, 1.4); } // 390 ≈ iPhone 12 width (pts)
+    function scaled(px)    { return px * constrain(width / 390, 0.9, 1.4); } // 390 ≈ iPhone 12 width
 
-    // ---------- Build a custom app icon (PNG) dynamically ----------
+    // ---------- Dynamic app icon with clearer wave separation ----------
     function buildAndSetIcon() {
       const size = 1024;
       const c = document.createElement('canvas');
@@ -318,26 +274,34 @@
       // Background (black)
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, size, size);
 
-      // Helper to draw a sine wave across icon width
-      function drawWave(color, phaseDeg, amp) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(6, size * 0.012);
+      // Draw sine wave helper
+      function wavePath(yMid, amp, phaseDeg) {
         ctx.beginPath();
         for (let i = 0; i <= size; i++) {
-          const t = i / size;                // 0..1
-          const ang = t * 360;               // degrees
-          const y = size*0.45 - amp * Math.sin((ang - phaseDeg) * Math.PI/180);
-          const x = i;
-          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          const t = i / size;           // 0..1
+          const ang = t * 360;          // degrees
+          const y = yMid - amp * Math.sin((ang - phaseDeg) * Math.PI/180);
+          if (i === 0) ctx.moveTo(i, y); else ctx.lineTo(i, y);
         }
-        ctx.stroke();
       }
 
-      // Three waves (match app colors/phases)
-      const amp = size * 0.16;
-      drawWave('#ffa500', 90,  amp);  // orange cos(ang-90) ~ sin(ang+0)
-      drawWave('#ff3b30', 90,  amp*0.85); // red    sin(ang-90)
-      drawWave('#00c8ff', 240, amp*0.7);  // cyan   sin(ang-240)
+      // Thicc strokes for readability
+      ctx.lineWidth = Math.max(8, size * 0.016);
+      ctx.lineCap = 'round';
+
+      // Baselines and phases (offset red & orange so they don't overlap)
+      const yMidOrange = size * 0.42;
+      const yMidRed    = size * 0.54;
+      const yMidCyan   = size * 0.48;
+
+      // Orange (minute): cos(ang-90) ~ sin(ang+0) → phase ~ 90
+      ctx.strokeStyle = '#ffa500'; wavePath(yMidOrange, size*0.18, 90); ctx.stroke();
+
+      // Red (hour): sin(ang-90) with a slight phase offset to separate (was 90 → use 60)
+      ctx.strokeStyle = '#ff3b30'; wavePath(yMidRed, size*0.16, 60); ctx.stroke();
+
+      // Cyan (seconds): sin(ang-240)
+      ctx.strokeStyle = '#00c8ff'; wavePath(yMidCyan, size*0.14, 240); ctx.stroke();
 
       // Title text
       ctx.fillStyle = '#fff';
